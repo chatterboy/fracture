@@ -11,6 +11,18 @@ def relu(name, input):
     with tf.variable_scope(name):
         return tf.nn.relu(input)
 
+def batch_norm(name, input, training=True):
+    """
+        Batch normalization layer
+
+    :param name: a string
+    :param input: a tensor, [batch_size, ...]
+    :param training: 
+    :return: 
+    """
+    with tf.variable_scope(name):
+        return tf.layers.batch_normalization(input, training=training)
+
 def maxpool2d(name, input, ksz, stride, padding):
     """
         Max pooling layer for 2D images
