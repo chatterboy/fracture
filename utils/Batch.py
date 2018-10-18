@@ -1,7 +1,7 @@
 import numpy as np
 
 class Batch:
-    def __int__(self, x, y, batch_size):
+    def __init__(self, x, y, batch_size):
         """
             Batch class to process data in mini batch
 
