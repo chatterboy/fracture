@@ -48,7 +48,7 @@ class DataAug:
         M = cv2.getRotationMatrix2D((axes[1], axes[0]), degrees, 1)
         return cv2.warpAffine(image, M, (image.shape[1], image.shape[0]))
 
-    def crop_image(self, image, starts, sizes):
+    def crop(self, image, starts, sizes):
         """
         :param image: a numpy, HWC
         :param starts: a list or tuple, [y,x]
