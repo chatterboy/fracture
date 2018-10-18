@@ -1,0 +1,207 @@
+import numpy as np
+import tensorflow as tf
+
+from utils.Load import Load
+from utils.Batch import Batch
+from utils.Preproc import Preproc
+from utils.DataAug import DataAug
+
+from models.resnet50 import resnet50
+
+def get_train(configurations):
+    """
+    :param configurations:
+    :return:
+    """
+    load = Load()
+    load.load(configurations['train_path'])
+    return load.get()
+
+def get_test(configurations):
+    """
+    :param configurations:
+    :return:
+    """
+    load = Load()
+    load.load(configurations['test_path'])
+    return load.get()
+
+def preproc(train_images, test_images):
+    """
+    :param train_images:
+    :param test_images:
+    :return:
+    """
+    pp = Preproc()
+    means = pp.get_means(train_images)
+    subtracted_train = pp.subtract_in_each_dim(train_images, means)
+    subtracted_test = pp.subtract_in_each_dim(test_images, means)
+    return subtracted_train, subtracted_test
+
+def one_hot(labels, configurations):
+    """
+
+    :param labels: a list of lists of integers
+    :param configurations: a dictionary for configurations
+    :return labels in one-hot vector: a numpy, NC
+    """
+    oned = np.zeros((len(labels), configurations['num_classes']), dtype=np.float32)
+    for n in range(len(labels)):
+        for i in range(len(labels[n])):
+            oned[n, labels[n][i]] = 1.0
+    return oned
+
+def get_offsets(image, offset_ratios):
+    """
+    :param image:
+    :param offset_ratios:
+    :return:
+    """
+    return [image.shape[0]*offset_ratios[0], image.shape[1]*offset_ratios[1]]
+
+def augment(images, crop_sizes):
+    """
+
+    :param images: a numpy, NHWC
+    :param crop_sizes: a list of sizes 2, [h, w]
+    :return augmented images: a numpy, NHWC
+    """
+    scales = [224, 256, 384, 480, 640]
+    flips = [None, 'h']
+    degrees = [30 * i for i in range(int(360 / 30))]
+    offsets = [[(i-1)/12, (j-1)/12] for i in range(3) for j in range(3)]
+    da = DataAug()
+    augmented = []
+    for n in range(images.shape[0]):
+        scaled = da.resize(images[n], [scales[np.random.randint(len(scales))]] * 2)
+        flipped = da.flip(scaled, 0) if flips[np.random.randint(len(flips))] == 'h' else scaled
+        rotated = da.rotate(flipped, degrees[np.random.randint(len(degrees))], [flipped.shape[0]/2, flipped.shape[1]/2])
+        translated = da.translate(rotated, get_offsets(rotated, offsets[np.random.randint(len(offsets))]))
+
+        starts = [int((translated.shape[0]-crop_sizes[0])/2), int((translated.shape[1]-crop_sizes[1])/2)]
+        sizes = [crop_sizes[0], crop_sizes[1]]
+        cropped = da.crop(translated, starts, sizes)
+
+        augmented.append(cropped)
+    return np.asarray(augmented)
+
+def resize(images, shapes):
+    """
+    :param images: a numpy, NHWC
+    :param shapes: a list of sizes 2, [h, w]
+    :return resized images: a numpy, NHWC
+    """
+    da = DataAug()
+    resized = []
+    for n in range(images.shape[0]):
+        resized.append(da.resize(images[n], shapes))
+    return np.asarray(resized)
+
+def get_acc(probs, labels, threshold):
+    """
+    :param probs:
+    :param labels:
+    :param threshold:
+    :return:
+    """
+    first = []
+    for n in range(probs.shape[0]):
+        i = -1
+        v = -1
+        for c in range(probs.shape[1]):
+            if v < probs[n, c]:
+                i = c
+                v = probs[n, c]
+        first.append(i)
+    second = []
+    for n in range(probs.shape[0]):
+        i = -1
+        v = -1
+        for c in range(probs.shape[1]):
+            if c != first[n] and v < probs[n, c]:
+                i = c
+                v = probs[n, c]
+        second.append(i)
+    result = []
+    for i in range(len(first)):
+        if probs[i, first[i]] - probs[i, second[i]] < threshold:
+            result.append([first[i], second[i]])
+        else:
+            result.append([first[i]])
+
+    for i in range(len(result)):
+        result[i].sort()
+
+    label = []
+    for n in range(labels.shape[0]):
+        ones = []
+        for c in range(labels.shape[1]):
+            if labels[n, c] > 0.5:
+                ones.append(c)
+        label.append(ones)
+
+    cors = 0 # number of corrections
+    for i in range(len(result)):
+        if len(result[i]) == len(label[i]):
+            valid = True
+            for j in range(len(result[i])):
+                valid &= label[i][j] == result[i][j]
+            if valid == True:
+                cors += 1
+
+    return cors / len(result)
+
+def train(configurations):
+    """
+    :param configurations: a dictionary
+    :return:
+    """
+    # Load images and labels for trainset and
+    # Load images and labels for testset
+    train_images, train_labels = get_train(configurations)
+    test_images, test_labels = get_test(configurations)
+
+    # Change data type to numpy
+    train_images = np.asarray(train_images)
+    test_images = np.asarray(test_images)
+
+    # Preprocess all the train images
+    train_images, test_images = preproc(train_images, test_images)
+
+    # Make labels to one-hot vector type
+    train_labels = one_hot(train_labels, configurations)
+    test_labels = one_hot(test_labels, configurations)
+
+    # Batch
+    batch_train = Batch(train_images, train_labels, configurations['batch_size'])
+    batch_test = Batch(test_images, test_labels, configurations['batch_size'])
+
+    # Define tensors and operations on tensorflow
+    x = tf.placeholder(tf.float32, shape=[configurations['batch_size'],
+                                          configurations['height'],
+                                          configurations['width'],
+                                          configurations['num_channels']], name='x')
+    y = tf.placeholder(tf.float32, shape=[configurations['batch_size'],
+                                          configurations['num_classes']], name='y')
+
+    logits_op = resnet50(x)
+
+    probs_op = tf.nn.sigmoid(logits_op)
+
+    loss_op = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=y, logits=logits_op))
+
+    update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+    with tf.control_dependencies(update_ops):
+        trainer_op = tf.train.AdamOptimizer(learning_rate=configurations['learning_rate']).minimize(loss_op)
+
+    with tf.Session() as sess:
+        tf.global_variables_initializer().run()
+        for epoch in range(configurations['num_epochs']):
+            train_x, train_y = batch_train.next_to()
+            loss, _ = sess.run([loss_op, trainer_op], feed_dict={x:augment(train_x, [224, 224]), y:train_y})
+            print("epoch: {} - loss: {}".format(epoch, loss))
+            if epoch % configurations['test_cycles'] == 0:
+                test_x, test_y = batch_test.next_to()
+                loss, prob = sess.run([loss_op, probs_op], feed_dict={x:resize(test_x, [224, 224]), y:test_y})
+                acc = get_acc(prob, test_y, 0.1)
+                print("In test phase loss: {} - acc: {}".format(loss, acc))
