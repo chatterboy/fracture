@@ -6,6 +6,7 @@ from utils.Load import Load
 from utils.Batch import Batch
 from utils.Preproc import Preproc
 from utils.DataAug import DataAug
+from utils.loss import sigmoid_cross_entropy_loss
 
 from models.resnet50 import resnet50
 
@@ -189,7 +190,7 @@ def train(configurations):
 
     probs_op = tf.nn.sigmoid(logits_op)
 
-    loss_op = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=y, logits=logits_op))
+    loss_op = sigmoid_cross_entropy_loss(labels=y, loss=logits_op)
 
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
     with tf.control_dependencies(update_ops):
