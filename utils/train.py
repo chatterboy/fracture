@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import tensorflow as tf
 
@@ -194,12 +195,24 @@ def train(configurations):
     with tf.control_dependencies(update_ops):
         trainer_op = tf.train.AdamOptimizer(learning_rate=configurations['learning_rate']).minimize(loss_op)
 
+    saver = tf.train.Saver()
+
     with tf.Session() as sess:
+        lowest_loss = None
+
         tf.global_variables_initializer().run()
-        for epoch in range(configurations['num_epochs']):
+
+        for epoch in range(1, configurations['num_epochs']+1):
             train_x, train_y = batch_train.next_to()
             loss, _ = sess.run([loss_op, trainer_op], feed_dict={x:augment(train_x, [224, 224]), y:train_y})
             print("epoch: {} - loss: {}".format(epoch, loss))
+
+            # Save a model that outputs a lowest loss until now
+            if lowest_loss == None or lowest_loss > loss:
+                print("lowest loss: {}".format(loss))
+                lowest_loss = loss
+                saver.save(sess, os.path.join(configurations['ckpt_path'], 'model.ckpt'))
+
             if epoch % configurations['test_cycles'] == 0:
                 test_x, test_y = batch_test.next_to()
                 loss, prob = sess.run([loss_op, probs_op], feed_dict={x:resize(test_x, [224, 224]), y:test_y})
