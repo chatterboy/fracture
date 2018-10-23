@@ -190,7 +190,7 @@ def train(configurations):
 
     probs_op = tf.nn.sigmoid(logits_op)
 
-    loss_op = sigmoid_cross_entropy_loss(labels=y, loss=logits_op)
+    loss_op = sigmoid_cross_entropy_loss(labels=y, logits=logits_op)
 
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
     with tf.control_dependencies(update_ops):
