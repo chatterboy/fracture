@@ -205,8 +205,9 @@ def train(configurations):
 
         for epoch in range(1, configurations['num_epochs']+1):
             train_x, train_y = batch_train.next_to()
-            loss, _ = sess.run([loss_op, trainer_op], feed_dict={x:augment(train_x, [224, 224]), y:train_y})
-            print("epoch: {} - loss: {}".format(epoch, loss))
+            loss, prob, _ = sess.run([loss_op, probs_op, trainer_op], feed_dict={x:augment(train_x, [224, 224]), y:train_y})
+            acc = get_acc(prob, train_y, 0.05)
+            print("epoch: {} - loss: {} - acc: {}".format(epoch, loss, acc))
 
             # Save a model that outputs a lowest loss until now
             if lowest_loss == None or lowest_loss > loss:
@@ -217,5 +218,5 @@ def train(configurations):
             if epoch % configurations['test_cycles'] == 0:
                 test_x, test_y = batch_test.next_to()
                 loss, prob = sess.run([loss_op, probs_op], feed_dict={x:resize(test_x, [224, 224]), y:test_y})
-                acc = get_acc(prob, test_y, 0.1)
+                acc = get_acc(prob, test_y, 0.05)
                 print("In test phase loss: {} - acc: {}".format(loss, acc))
